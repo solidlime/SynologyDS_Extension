@@ -52,6 +52,13 @@
 
   <!-- Main -->
   <div id="view-main" class="hidden">
+
+    <!-- Offline queue banner -->
+    <div id="queue-banner" class="queue-banner hidden">
+      <span id="queue-banner-text"></span>
+      <button id="queue-flush-btn" class="btn-queue-flush" title="Send queued tasks now">Send now</button>
+    </div>
+
     <div class="tabs">
       <button class="tab active" data-tab="active">
         Active <span id="badge-active" class="badge"></span>

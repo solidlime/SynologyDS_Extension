@@ -1,5 +1,6 @@
 import { synoAPI, DSTask, TaskStatus } from '../api/synology.js';
 import { loadSettings, isConfigured } from '../storage/settings.js';
+import { loadQueue } from '../storage/queue.js';
 
 type Tab = 'active' | 'finished' | 'error';
 
@@ -149,6 +150,20 @@ function setBadge(id: string, n: number): void {
   document.getElementById(id)!.textContent = n > 0 ? String(n) : '';
 }
 
+// ── Queue banner ───────────────────────────────────────────────────────────────
+
+async function updateQueueBanner(): Promise<void> {
+  const queue = await loadQueue();
+  const banner = document.getElementById('queue-banner')!;
+  const text   = document.getElementById('queue-banner-text')!;
+  if (queue.length === 0) {
+    banner.classList.add('hidden');
+  } else {
+    text.textContent = `${queue.length} task${queue.length !== 1 ? 's' : ''} queued (offline)`;
+    banner.classList.remove('hidden');
+  }
+}
+
 // ── Data fetching ──────────────────────────────────────────────────────────────
 
 async function fetchTasks(): Promise<void> {
@@ -183,10 +198,18 @@ async function init(): Promise<void> {
     const settings = await loadSettings();
     await synoAPI.login({ url: settings.nasUrl, username: settings.username, password: settings.password });
     show('main');
+    await updateQueueBanner();
     startPoll();
   } catch (e) {
     document.getElementById('error-msg')!.textContent = (e as Error).message;
     show('error');
+    // Still show queue banner even when offline
+    await updateQueueBanner();
+    // Show main view with banner if there are queued items but NAS is down
+    const queue = await loadQueue();
+    if (queue.length > 0) {
+      show('error');
+    }
   }
 }
 
@@ -195,6 +218,22 @@ async function init(): Promise<void> {
 document.getElementById('open-settings-btn')!.addEventListener('click', () => chrome.runtime.openOptionsPage());
 document.getElementById('settings-btn')!.addEventListener('click',      () => chrome.runtime.openOptionsPage());
 document.getElementById('retry-btn')!.addEventListener('click',          () => init());
+
+document.getElementById('queue-flush-btn')!.addEventListener('click', async () => {
+  const btn = document.getElementById('queue-flush-btn') as HTMLButtonElement;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const result: { sent: number; failed: number } = await chrome.runtime.sendMessage({ type: 'FLUSH_QUEUE' });
+    await updateQueueBanner();
+    if (result?.sent > 0) await fetchTasks();
+  } catch {
+    // ignore
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send now';
+  }
+});
 
 document.getElementById('refresh-btn')!.addEventListener('click', async () => {
   const btn = document.getElementById('refresh-btn')!;
