@@ -200,7 +200,7 @@ export class SynologyAPI {
       api: fsApi,
       version: this._version(fsApi, 2),
       method: 'download',
-      path: JSON.stringify([path]),
+      path: path,
       mode: 'open',
       _sid: this.sid,
     });
