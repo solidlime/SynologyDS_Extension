@@ -188,6 +188,37 @@ function stopPoll(): void {
   if (pollTimer !== null) { clearInterval(pollTimer); pollTimer = null; }
 }
 
+// ── Add task ──────────────────────────────────────────────────────────────────
+
+const addTaskInput = document.getElementById('add-task-input') as HTMLInputElement;
+const addTaskBtn   = document.getElementById('add-task-btn')   as HTMLButtonElement;
+
+async function addTaskFromInput(): Promise<void> {
+  const url = addTaskInput.value.trim();
+  if (!url) return;
+
+  addTaskBtn.disabled = true;
+  try {
+    const result: { success: boolean; queued?: boolean } =
+      await chrome.runtime.sendMessage({ type: 'ADD_TASK', url });
+    if (result?.success) {
+      addTaskInput.value = '';
+      if (result.queued) {
+        await updateQueueBanner();
+      } else {
+        await fetchTasks();
+      }
+    }
+  } catch {
+    // ignore
+  } finally {
+    addTaskBtn.disabled = false;
+  }
+}
+
+addTaskBtn.addEventListener('click', addTaskFromInput);
+addTaskInput.addEventListener('keydown', e => { if (e.key === 'Enter') addTaskFromInput(); });
+
 // ── Initialisation ─────────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {

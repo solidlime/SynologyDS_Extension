@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DownloadStation — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <img src="../icons/icon48.png" alt="" class="logo">
+    <div>
+      <h1>DownloadStation Settings</h1>
+      <p class="subtitle">Synology NAS connection</p>
+    </div>
+  </header>
+
+  <form id="form">
+    <div class="field">
+      <label for="nas-url">NAS URL</label>
+      <input type="text" id="nas-url" placeholder="https://192.168.1.100:5001" autocomplete="off" spellcheck="false">
+      <small>
+        HTTPS: <code>https://192.168.1.100:5001</code><br>
+        HTTP: <code>http://nas:5000</code><br>
+        QuickConnect (direct): <code>solidlime.direct.quickconnect.to</code><br>
+        QuickConnect (ID): <code>solidlime</code> or <code>quickconnect.to/solidlime</code>
+      </small>
+    </div>
+
+    <div class="field">
+      <label for="username">Username</label>
+      <input type="text" id="username" autocomplete="username">
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password">
+    </div>
+
+    <div class="field">
+      <label for="destination">Default Download Destination <span class="optional">(optional)</span></label>
+      <input type="text" id="destination" placeholder="/downloads">
+      <small>Leave empty to use DownloadStation's default destination</small>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="test-btn" class="btn btn-secondary">Test Connection</button>
+      <button type="submit" id="save-btn" class="btn btn-primary">Save Settings</button>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+  </form>
+
+  <div class="notice">
+    <strong>⚠ Self-signed certificate:</strong> If your NAS uses a self-signed SSL certificate,
+    open the NAS URL in Chrome and click <em>Advanced → Proceed</em> to trust it before using this extension.
+    For HTTP connections, no certificate setup is needed.
+  </div>
+
+</div>
+<script type="module" src="options.js"></script>
+</body>
+</html>

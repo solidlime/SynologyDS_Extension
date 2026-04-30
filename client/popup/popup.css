@@ -224,46 +224,6 @@ header {
 .action-btn.danger:hover { border-color: #ef5350; color: #ef5350; background: #ffebee; }
 .action-btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
-/* ── Add task row ── */
-.add-task-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-top: 1px solid #eee;
-  flex-shrink: 0;
-}
-.add-task-input {
-  flex: 1;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  font-size: 12px;
-  color: #333;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.add-task-input:focus { border-color: #1565C0; }
-.add-task-input::placeholder { color: #bbb; }
-.add-task-btn {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #1565C0;
-  border: none;
-  border-radius: 5px;
-  color: white;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.add-task-btn:hover { background: #0d47a1; }
-.add-task-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.add-task-btn svg { width: 16px; height: 16px; }
-
 /* ── Footer ── */
 footer {
   padding: 7px 14px;
