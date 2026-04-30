@@ -175,7 +175,8 @@ async function init(): Promise<void> {
 
   show('loading');
   try {
-    await synoAPI.login(await loadSettings());
+    const settings = await loadSettings();
+    await synoAPI.login({ url: settings.nasUrl, username: settings.username, password: settings.password });
     show('main');
     startPoll();
   } catch (e) {
