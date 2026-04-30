@@ -88,6 +88,11 @@ export class SynologyAPI {
     return this.sid !== null;
   }
 
+  /** The resolved URL used for the last login — useful for diagnostics. */
+  get resolvedUrl(): string {
+    return this.baseUrl;
+  }
+
   async login(settings: DSSettings): Promise<void> {
     let url = settings.url.trim().replace(/\/$/, '');
 
@@ -172,18 +177,26 @@ export class SynologyAPI {
         body: params.toString(),
       });
     } catch (e) {
-      throw new Error(`Network error: ${(e as Error).message}. Check NAS URL and network connection.`);
+      const raw = (e as Error).message;
+      const isHttps = this.baseUrl.startsWith('https://');
+      if (raw === 'Failed to fetch' || raw.includes('ERR_')) {
+        const hint = isHttps
+          ? ' If using HTTPS with a self-signed cert, open the NAS URL in Chrome and accept the certificate first.'
+          : ' Check that the NAS is reachable and the port is correct.';
+        throw new Error(`Cannot reach ${this.baseUrl}.${hint}`);
+      }
+      throw new Error(`Network error (${this.baseUrl}): ${raw}`);
     }
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      throw new Error(`HTTP ${response.status} from ${this.baseUrl}: ${response.statusText}`);
     }
 
     let data: { success: boolean; data?: Record<string, unknown>; error?: { code: number } };
     try {
       data = await response.json() as typeof data;
     } catch {
-      throw new Error('Invalid JSON response from NAS.');
+      throw new Error(`Invalid response from ${this.baseUrl} — is this a Synology NAS?`);
     }
 
     if (!data.success) {

@@ -20,7 +20,7 @@ function setStatus(msg: string, type: 'success' | 'error' | 'info'): void {
   statusEl.className = `status ${type}`;
   statusTimer = setTimeout(() => {
     statusEl.className = 'status hidden';
-  }, 5000);
+  }, type === 'error' ? 15000 : 5000);
 }
 
 // ── Load saved settings ────────────────────────────────────────────────────────
@@ -38,6 +38,7 @@ async function init(): Promise<void> {
 testBtn.addEventListener('click', async () => {
   testBtn.disabled = true;
   testBtn.textContent = 'Testing…';
+  setStatus('Connecting…', 'info');
   const api = new SynologyAPI();
   try {
     await api.login({
@@ -45,8 +46,10 @@ testBtn.addEventListener('click', async () => {
       username: usernameInput.value.trim(),
       password: passwordInput.value,
     });
+    const resolved = api.resolvedUrl;
+    const note = resolved !== nasUrlInput.value.trim() ? ` (resolved: ${resolved})` : '';
     await api.logout();
-    setStatus('✓ Connection successful!', 'success');
+    setStatus(`✓ Connection successful!${note}`, 'success');
   } catch (e) {
     setStatus(`✗ ${(e as Error).message}`, 'error');
   } finally {
