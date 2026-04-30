@@ -1,9 +1,16 @@
 /**
  * Synology DownloadStation API client.
- * Targets DSM 7.x — SYNO.API.Auth v7, SYNO.DownloadStation.Task v3.
+ * Queries SYNO.API.Info on login to discover each API's correct path and
+ * maximum supported version — works with DSM 5 / 6 / 7.
  */
 
 import { isQuickConnect, resolveQuickConnect } from './quickconnect.js';
+
+interface ApiInfo {
+  path: string;
+  maxVersion: number;
+  minVersion: number;
+}
 
 export interface DSSettings {
   url: string;
@@ -83,6 +90,7 @@ export class SynologyAPIError extends Error {
 export class SynologyAPI {
   private sid: string | null = null;
   private baseUrl = '';
+  private apiInfo: Record<string, ApiInfo> = {};
 
   get isLoggedIn(): boolean {
     return this.sid !== null;
@@ -93,27 +101,70 @@ export class SynologyAPI {
     return this.baseUrl;
   }
 
+  // ── API Info discovery ──────────────────────────────────────────────────────
+
+  /**
+   * Query SYNO.API.Info to discover correct paths and versions for all needed
+   * APIs. Falls back silently — callers then use entry.cgi as default.
+   */
+  private async _discoverApis(): Promise<void> {
+    const queryUrl =
+      `${this.baseUrl}/webapi/query.cgi` +
+      `?api=SYNO.API.Info&version=1&method=query` +
+      `&query=SYNO.API.Auth,SYNO.DownloadStation.Task`;
+    try {
+      const res = await fetch(queryUrl);
+      if (!res.ok) return;
+      const body = (await res.json()) as { success: boolean; data?: Record<string, ApiInfo> };
+      if (body.success && body.data) {
+        this.apiInfo = body.data;
+      }
+    } catch {
+      // Non-fatal: fall back to entry.cgi defaults
+    }
+  }
+
+  /** Return the webapi sub-path for an API, defaulting to entry.cgi. */
+  private _path(api: string): string {
+    return this.apiInfo[api]?.path ?? 'entry.cgi';
+  }
+
+  /**
+   * Return the best version to use for an API, capped at our own maximum.
+   * Falls back to maxSupported if API info is unavailable.
+   */
+  private _version(api: string, maxSupported: number): string {
+    const info = this.apiInfo[api];
+    if (!info) return String(maxSupported);
+    return String(Math.min(info.maxVersion, maxSupported));
+  }
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+
   async login(settings: DSSettings): Promise<void> {
     let url = settings.url.trim().replace(/\/$/, '');
 
     if (isQuickConnect(url)) {
       url = await resolveQuickConnect(url);
     } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      // No scheme provided — default to HTTPS
       url = `https://${url}`;
     }
 
     this.baseUrl = url;
+
+    // Discover API paths/versions before any other call
+    await this._discoverApis();
+
     const params = new URLSearchParams({
       api: 'SYNO.API.Auth',
-      version: '7',
+      version: this._version('SYNO.API.Auth', 7),
       method: 'login',
       account: settings.username,
       passwd: settings.password,
       session: 'DownloadStation',
       format: 'sid',
     });
-    const data = await this._request(params, false);
+    const data = await this._request('SYNO.API.Auth', params, false);
     this.sid = data.sid as string;
   }
 
@@ -121,9 +172,10 @@ export class SynologyAPI {
     if (!this.sid) return;
     try {
       await this._request(
+        'SYNO.API.Auth',
         new URLSearchParams({
           api: 'SYNO.API.Auth',
-          version: '7',
+          version: this._version('SYNO.API.Auth', 7),
           method: 'logout',
           session: 'DownloadStation',
         }),
@@ -133,6 +185,8 @@ export class SynologyAPI {
       this.sid = null;
     }
   }
+
+  // ── Download Station tasks ──────────────────────────────────────────────────
 
   async listTasks(offset = 0, limit = 200): Promise<DSTaskListResult> {
     return this._task({ method: 'list', offset: String(offset), limit: String(limit), additional: 'detail,transfer' }) as Promise<DSTaskListResult>;
@@ -157,21 +211,26 @@ export class SynologyAPI {
   }
 
   private async _task(params: Record<string, string>): Promise<unknown> {
+    const api = 'SYNO.DownloadStation.Task';
     return this._request(
-      new URLSearchParams({ api: 'SYNO.DownloadStation.Task', version: '3', ...params }),
+      api,
+      new URLSearchParams({ api, version: this._version(api, 3), ...params }),
       true,
     );
   }
 
-  private async _request(params: URLSearchParams, authenticated: boolean): Promise<Record<string, unknown>> {
+  // ── HTTP transport ──────────────────────────────────────────────────────────
+
+  private async _request(api: string, params: URLSearchParams, authenticated: boolean): Promise<Record<string, unknown>> {
     if (authenticated) {
       if (!this.sid) throw new SynologyAPIError(0, 'Not authenticated — please check NAS settings.');
       params.set('_sid', this.sid);
     }
 
+    const endpoint = `${this.baseUrl}/webapi/${this._path(api)}`;
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}/webapi/entry.cgi`, {
+      response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString(),
@@ -201,9 +260,9 @@ export class SynologyAPI {
 
     if (!data.success) {
       const code = data.error?.code ?? -1;
-      const api = params.get('api') ?? '';
+      const apiName = params.get('api') ?? '';
       let message = `API error (code ${code})`;
-      if (api.includes('Auth')) {
+      if (apiName.includes('Auth')) {
         message = AUTH_ERRORS[code] ?? message;
       } else {
         message = TASK_ERRORS[code] ?? message;
