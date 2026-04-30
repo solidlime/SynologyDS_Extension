@@ -161,7 +161,7 @@ export class SynologyAPI {
       method: 'login',
       account: settings.username,
       passwd: settings.password,
-      session: 'DownloadStation',
+      session: 'FileStation',
       format: 'sid',
     });
     const data = await this._request('SYNO.API.Auth', params, false);
@@ -177,7 +177,7 @@ export class SynologyAPI {
           api: 'SYNO.API.Auth',
           version: this._version('SYNO.API.Auth', 7),
           method: 'logout',
-          session: 'DownloadStation',
+          session: 'FileStation',
         }),
         true,
       );
@@ -194,13 +194,15 @@ export class SynologyAPI {
    */
   fileOpenUrl(destination: string, filename: string): string | null {
     if (!this.sid) return null;
-    const path = `${destination.replace(/\/$/, '')}/${filename}`;
+    // Ensure destination has a leading slash (DSM task destinations may omit it)
+    const dest = destination.startsWith('/') ? destination : `/${destination}`;
+    const path = `${dest.replace(/\/$/, '')}/${filename}`;
     const fsApi = 'SYNO.FileStation.Download';
     const params = new URLSearchParams({
       api: fsApi,
       version: this._version(fsApi, 2),
       method: 'download',
-      path: path,
+      path,
       mode: 'open',
       _sid: this.sid,
     });
