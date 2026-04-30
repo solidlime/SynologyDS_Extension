@@ -244,7 +244,7 @@ document.getElementById('task-list')!.addEventListener('dblclick', e => {
   const title = span.dataset['title'];
   if (!dest || !title) return;
   const url = synoAPI.fileOpenUrl(dest, title);
-  if (url) chrome.tabs.create({ url });
+  if (url) chrome.downloads.download({ url, filename: title });
 });
 
 init();

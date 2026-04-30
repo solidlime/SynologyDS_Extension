@@ -4,7 +4,7 @@
   "short_name": "DS Manager",
   "version": "1.0.0",
   "description": "Manage Synology DownloadStation: send URLs via right-click or control tasks from the toolbar popup.",
-  "permissions": ["contextMenus", "storage", "notifications"],
+  "permissions": ["contextMenus", "storage", "notifications", "downloads"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "service_worker.js",
