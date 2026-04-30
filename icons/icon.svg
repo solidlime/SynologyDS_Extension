@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="#1565C0"/>
+  <!-- Arrow shaft -->
+  <rect x="55" y="20" width="18" height="52" rx="5" fill="white"/>
+  <!-- Arrow head (triangle pointing down) -->
+  <path d="M26 68 L64 108 L102 68 Z" fill="white"/>
+  <!-- Bottom bar -->
+  <rect x="20" y="112" width="88" height="13" rx="6" fill="white"/>
+</svg>

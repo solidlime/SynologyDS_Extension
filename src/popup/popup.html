@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DownloadStation</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <span class="header-title">DownloadStation</span>
+    <div class="header-actions">
+      <button id="refresh-btn" class="icon-btn" title="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+        </svg>
+      </button>
+      <button id="settings-btn" class="icon-btn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2a1 1 0 01.993.883L13 3v1.07a7.002 7.002 0 012.863 1.657l.928-.537a1 1 0 011.366.366l1 1.732a1 1 0 01-.366 1.366l-.927.536c.058.393.086.793.086 1.196s-.028.803-.086 1.196l.927.536a1 1 0 01.366 1.366l-1 1.732a1 1 0 01-1.366.366l-.928-.537A7.002 7.002 0 0113 18.93V20a1 1 0 01-2 0v-1.07a7.002 7.002 0 01-2.863-1.657l-.928.537a1 1 0 01-1.366-.366l-1-1.732a1 1 0 01.366-1.366l.927-.536A7.003 7.003 0 014 12c0-.403.028-.803.086-1.196l-.927-.536a1 1 0 01-.366-1.366l1-1.732a1 1 0 011.366-.366l.928.537A7.002 7.002 0 0111 4.07V3a1 1 0 011-1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Not configured -->
+  <div id="view-unconfigured" class="center-view hidden">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5">
+      <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+    </svg>
+    <p>NAS not configured yet.</p>
+    <button id="open-settings-btn" class="btn btn-primary">Open Settings</button>
+  </div>
+
+  <!-- Loading -->
+  <div id="view-loading" class="center-view hidden">
+    <div class="spinner"></div>
+    <p>Connecting…</p>
+  </div>
+
+  <!-- Error -->
+  <div id="view-error" class="center-view hidden">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef5350" stroke-width="1.5">
+      <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+    </svg>
+    <p id="error-msg" class="error-text"></p>
+    <button id="retry-btn" class="btn btn-secondary">Retry</button>
+  </div>
+
+  <!-- Main -->
+  <div id="view-main" class="hidden">
+    <div class="tabs">
+      <button class="tab active" data-tab="active">
+        Active <span id="badge-active" class="badge"></span>
+      </button>
+      <button class="tab" data-tab="finished">
+        Finished <span id="badge-finished" class="badge"></span>
+      </button>
+      <button class="tab" data-tab="error">
+        Error <span id="badge-error" class="badge badge-error"></span>
+      </button>
+    </div>
+
+    <div id="task-list" class="task-list">
+      <div id="empty-msg" class="empty-msg">No tasks</div>
+    </div>
+
+    <footer>
+      <span id="stats-text" class="stats-text"></span>
+    </footer>
+  </div>
+
+</div>
+<script type="module" src="popup.js"></script>
+</body>
+</html>
