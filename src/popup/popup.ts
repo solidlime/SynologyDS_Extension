@@ -66,6 +66,8 @@ function renderTask(task: DSTask): HTMLElement {
   const pct   = progress(task);
   const t     = task.additional?.transfer;
   const done  = task.status === 'finished' || task.status === 'seeding';
+  const dest  = task.additional?.detail?.destination;
+  const openable = done && !!dest;
   const canResume = task.status === 'paused';
   const canPause  = task.status === 'downloading' || task.status === 'seeding';
 
@@ -80,7 +82,10 @@ function renderTask(task: DSTask): HTMLElement {
   el.className = 'task-item';
   el.innerHTML = `
     <div class="task-header">
-      <span class="task-name" title="${esc(task.title)}">${esc(task.title)}</span>
+      <span class="task-name${openable ? ' task-name--link' : ''}"
+            title="${esc(task.title)}${openable ? '\nダブルクリックで開く' : ''}"
+            ${openable ? `data-dest="${esc(dest!)}" data-title="${esc(task.title)}"` : ''}
+      >${esc(task.title)}</span>
       <span class="task-status s-${task.status}">${STATUS_LABEL[task.status] ?? task.status}</span>
     </div>
     <div class="progress-bar">
@@ -231,5 +236,15 @@ document.getElementById('task-list')!.addEventListener('click', async e => {
 });
 
 window.addEventListener('pagehide', stopPoll);
+
+document.getElementById('task-list')!.addEventListener('dblclick', e => {
+  const span = (e.target as HTMLElement).closest<HTMLElement>('span.task-name--link');
+  if (!span) return;
+  const dest  = span.dataset['dest'];
+  const title = span.dataset['title'];
+  if (!dest || !title) return;
+  const url = synoAPI.fileOpenUrl(dest, title);
+  if (url) chrome.tabs.create({ url });
+});
 
 init();

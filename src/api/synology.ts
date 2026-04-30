@@ -111,7 +111,7 @@ export class SynologyAPI {
     const queryUrl =
       `${this.baseUrl}/webapi/query.cgi` +
       `?api=SYNO.API.Info&version=1&method=query` +
-      `&query=SYNO.API.Auth,SYNO.DownloadStation.Task`;
+      `&query=SYNO.API.Auth,SYNO.DownloadStation.Task,SYNO.FileStation.Download`;
     try {
       const res = await fetch(queryUrl);
       if (!res.ok) return;
@@ -184,6 +184,27 @@ export class SynologyAPI {
     } finally {
       this.sid = null;
     }
+  }
+
+  /**
+   * Returns a URL to open/download a file from the NAS via File Station.
+   * Returns null if not logged in.
+   * @param destination - The folder path (e.g. "/downloads")
+   * @param filename    - The file or folder name (task title)
+   */
+  fileOpenUrl(destination: string, filename: string): string | null {
+    if (!this.sid) return null;
+    const path = `${destination.replace(/\/$/, '')}/${filename}`;
+    const fsApi = 'SYNO.FileStation.Download';
+    const params = new URLSearchParams({
+      api: fsApi,
+      version: this._version(fsApi, 2),
+      method: 'download',
+      path: JSON.stringify([path]),
+      mode: 'open',
+      _sid: this.sid,
+    });
+    return `${this.baseUrl}/webapi/${this._path(fsApi)}?${params.toString()}`;
   }
 
   // ── Download Station tasks ──────────────────────────────────────────────────

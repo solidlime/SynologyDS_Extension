@@ -128,7 +128,15 @@ header {
   white-space: nowrap;
 }
 
-.task-status {
+.task-name--link {
+  cursor: pointer;
+  color: #1565C0;
+}
+.task-name--link:hover {
+  text-decoration: underline;
+}
+
+
   font-size: 10px;
   font-weight: 600;
   padding: 2px 6px;
