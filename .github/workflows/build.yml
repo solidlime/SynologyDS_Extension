@@ -24,7 +24,7 @@ jobs:
         run: npm install
 
       - name: Type-check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Generate icons
         run: npm run icons
