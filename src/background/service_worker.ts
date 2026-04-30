@@ -35,7 +35,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
 
     if (!synoAPI.isLoggedIn) {
-      await synoAPI.login(settings);
+      await synoAPI.login({ url: settings.nasUrl, username: settings.username, password: settings.password });
     }
 
     await synoAPI.createTask(url, settings.defaultDestination || undefined);
@@ -45,8 +45,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     // Re-authenticate once if session expired
     if (!synoAPI.isLoggedIn) {
       try {
-        const settings = await loadSettings();
-        await synoAPI.login(settings);
+        const s = await loadSettings();
+        await synoAPI.login({ url: s.nasUrl, username: s.username, password: s.password });
         await synoAPI.createTask(url);
         notify('Task added', clip(url, 80));
         return;
