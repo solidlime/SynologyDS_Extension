@@ -3,6 +3,8 @@
  * Targets DSM 7.x — SYNO.API.Auth v7, SYNO.DownloadStation.Task v3.
  */
 
+import { isQuickConnect, resolveQuickConnect } from './quickconnect.js';
+
 export interface DSSettings {
   url: string;
   username: string;
@@ -87,7 +89,16 @@ export class SynologyAPI {
   }
 
   async login(settings: DSSettings): Promise<void> {
-    this.baseUrl = settings.url.replace(/\/$/, '');
+    let url = settings.url.trim().replace(/\/$/, '');
+
+    if (isQuickConnect(url)) {
+      url = await resolveQuickConnect(url);
+    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      // No scheme provided — default to HTTPS
+      url = `https://${url}`;
+    }
+
+    this.baseUrl = url;
     const params = new URLSearchParams({
       api: 'SYNO.API.Auth',
       version: '7',
@@ -161,7 +172,7 @@ export class SynologyAPI {
         body: params.toString(),
       });
     } catch (e) {
-      throw new Error(`Network error: ${(e as Error).message}. Check NAS URL and certificate.`);
+      throw new Error(`Network error: ${(e as Error).message}. Check NAS URL and network connection.`);
     }
 
     if (!response.ok) {
