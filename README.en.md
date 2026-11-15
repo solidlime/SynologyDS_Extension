@@ -73,7 +73,7 @@ When the NAS is unreachable (network down, NAS sleeping, etc.), any URL you righ
 
 The queue is flushed automatically on browser startup. If the popup is open and the NAS comes back online, a **yellow banner** appears with a **"Send now"** button to flush all queued tasks immediately.
 
-Queued tasks are never lost — they persist until successfully sent to DownloadStation.
+Tasks stay queued while the NAS is unreachable. A task is removed from the queue only when DownloadStation accepts it, or when DownloadStation rejects it (bad destination, task limit) and you are notified.
 
 ## Downloading Files
 
