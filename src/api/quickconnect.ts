@@ -2,10 +2,10 @@
  * Synology QuickConnect resolver.
  *
  * Supported input formats:
- *   - Bare server ID           : "solidlime"
- *   - quickconnect.to URL      : "quickconnect.to/solidlime"
- *   - Direct QC hostname       : "solidlime.direct.quickconnect.to"
- *   - Any *.quickconnect.to URL: "solidlime.cn2.quickconnect.to"
+ *   - Bare server ID           : "yourID"
+ *   - quickconnect.to URL      : "quickconnect.to/yourID"
+ *   - Direct QC hostname       : "yourID.direct.quickconnect.to"
+ *   - Any *.quickconnect.to URL: "yourID.cn2.quickconnect.to"
  */
 
 const QC_SERV_URL = 'https://global.quickconnect.to/Serv.php';
@@ -34,7 +34,7 @@ export function isQuickConnect(input: string): boolean {
   const s = input.trim().toLowerCase();
   const noScheme = s.replace(/^https?:\/\//, '');
 
-  // Already a *.quickconnect.to domain (e.g. solidlime.direct.quickconnect.to)
+  // Already a *.quickconnect.to domain (e.g. yourID.direct.quickconnect.to)
   if (noScheme.includes('.quickconnect.to')) return true;
 
   // quickconnect.to/id format
@@ -49,7 +49,7 @@ export function isQuickConnect(input: string): boolean {
   // Contains a dot but no scheme/port → hostname (e.g. "mynas.local") → direct URL
   if (s.includes('.')) return false;
 
-  // No dots, no port, no scheme → bare QuickConnect ID (e.g. "solidlime")
+  // No dots, no port, no scheme → bare QuickConnect ID (e.g. "yourID")
   return true;
 }
 
@@ -70,6 +70,11 @@ export async function resolveQuickConnect(input: string): Promise<string> {
   const serverID = s.replace(/^(?:www\.)?quickconnect\.to\//i, '');
 
   return _resolveServerID(serverID);
+}
+
+/** Wrap IPv6 literals in brackets so they form a valid URL host. */
+function hostFor(host: string): string {
+  return host.includes(':') ? `[${host}]` : host;
 }
 
 async function _resolveServerID(serverID: string): Promise<string> {
@@ -106,13 +111,13 @@ async function _resolveServerID(serverID: string): Promise<string> {
 
   // Priority: external IP → DDNS → FQDN → relay subdomain
   const ext = data.server?.external?.ip;
-  if (ext) return `https://${ext}:${port}`;
+  if (ext) return `https://${hostFor(ext)}:${port}`;
 
   const ddns = data.server?.ddns;
-  if (ddns && ddns !== 'NULL') return `https://${ddns}:${port}`;
+  if (ddns && ddns !== 'NULL') return `https://${hostFor(ddns)}:${port}`;
 
   const fqdn = data.server?.fqdn;
-  if (fqdn && fqdn !== 'NULL') return `https://${fqdn}:${port}`;
+  if (fqdn && fqdn !== 'NULL') return `https://${hostFor(fqdn)}:${port}`;
 
   const controlHost = data.env?.control_host;
   const sid = data.server?.serverID ?? serverID;

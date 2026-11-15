@@ -1,4 +1,4 @@
-import { synoAPI } from '../api/synology.js';
+import { synoAPI, SynologyAPIError } from '../api/synology.js';
 import { loadSettings } from '../storage/settings.js';
 import { enqueueTask, loadQueue, dequeueTask } from '../storage/queue.js';
 
@@ -61,13 +61,24 @@ export async function flushQueue(): Promise<{ sent: number; failed: number }> {
 
   let sent = 0;
   let failed = 0;
+  let rejected = 0;
+  let firstRejectMsg = '';
 
   for (const task of queue) {
     try {
-      await trySend(task.uri, task.destination);
+      const ok = await trySend(task.uri, task.destination);
+      if (!ok) { failed++; break; }   // no credentials — nothing will send, stop here
       await dequeueTask(task.id);
       sent++;
-    } catch {
+    } catch (err) {
+      if (err instanceof SynologyAPIError) {
+        // NAS answered and refused — drop the task so the rest can proceed
+        await dequeueTask(task.id);
+        failed++;
+        rejected++;
+        if (!firstRejectMsg) firstRejectMsg = err.message;
+        continue;
+      }
       failed++;
       // Stop processing on first failure — NAS likely still unreachable
       break;
@@ -82,13 +93,17 @@ export async function flushQueue(): Promise<{ sent: number; failed: number }> {
     notify('Queue flushed', msg);
   }
 
+  if (rejected > 0) {
+    notify('Queue error', `${rejected} task(s) rejected: ${firstRejectMsg}`);
+  }
+
   return { sent, failed };
 }
 
 /**
  * Add a task from popup. Returns { success, queued } or throws.
  */
-async function handleAddTask(url: string): Promise<{ success: boolean; queued?: boolean }> {
+async function handleAddTask(url: string): Promise<{ success: boolean; queued?: boolean; error?: string }> {
   const settings = await loadSettings();
   if (!settings.nasUrl || !settings.username || !settings.password) {
     return { success: false };
@@ -96,7 +111,11 @@ async function handleAddTask(url: string): Promise<{ success: boolean; queued?: 
   try {
     await trySend(url, settings.defaultDestination || undefined);
     return { success: true, queued: false };
-  } catch {
+  } catch (err) {
+    if (err instanceof SynologyAPIError) {
+      // NAS refused the task — queueing would only replay the same rejection
+      return { success: false, error: err.message };
+    }
     await enqueueTask(url, settings.defaultDestination || undefined);
     return { success: true, queued: true };
   }
@@ -142,6 +161,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       } catch {
         // fall through to queue
       }
+    }
+
+    if (err instanceof SynologyAPIError) {
+      // Permanent rejection — the queue would only repeat it
+      notify('Error', err.message);
+      return;
     }
 
     // NAS unreachable — add to offline queue

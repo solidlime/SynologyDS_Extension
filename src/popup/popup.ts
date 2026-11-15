@@ -81,13 +81,14 @@ function renderTask(task: DSTask): HTMLElement {
 
   const el = document.createElement('div');
   el.className = 'task-item';
+  // pi-lens-ignore: no-inner-html — every interpolated value is passed through esc()
   el.innerHTML = `
     <div class="task-header">
       <span class="task-name${openable ? ' task-name--link' : ''}"
             title="${esc(task.title)}${openable ? '\nダブルクリックで開く' : ''}"
             ${openable ? `data-dest="${esc(dest!)}" data-title="${esc(task.title)}"` : ''}
       >${esc(task.title)}</span>
-      <span class="task-status s-${task.status}">${STATUS_LABEL[task.status] ?? task.status}</span>
+      <span class="task-status s-${esc(task.status)}">${esc(STATUS_LABEL[task.status] ?? task.status)}</span>
     </div>
     <div class="progress-bar">
       <div class="progress-fill ${done ? 'done' : ''}" style="width:${pct}%"></div>
@@ -199,7 +200,7 @@ async function addTaskFromInput(): Promise<void> {
 
   addTaskBtn.disabled = true;
   try {
-    const result: { success: boolean; queued?: boolean } =
+    const result: { success: boolean; queued?: boolean; error?: string } =
       await chrome.runtime.sendMessage({ type: 'ADD_TASK', url });
     if (result?.success) {
       addTaskInput.value = '';
@@ -208,12 +209,21 @@ async function addTaskFromInput(): Promise<void> {
       } else {
         await fetchTasks();
       }
+    } else {
+      // Rejected by the NAS, or no reply from the service worker
+      showAddError(result?.error ?? 'Failed to add task');
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    showAddError((err as Error).message);
   } finally {
     addTaskBtn.disabled = false;
   }
+}
+
+function showAddError(message: string): void {
+  document.getElementById('error-msg')!.textContent = message;
+  show('error');
+  stopPoll();
 }
 
 addTaskBtn.addEventListener('click', addTaskFromInput);
@@ -258,8 +268,8 @@ document.getElementById('queue-flush-btn')!.addEventListener('click', async () =
     const result: { sent: number; failed: number } = await chrome.runtime.sendMessage({ type: 'FLUSH_QUEUE' });
     await updateQueueBanner();
     if (result?.sent > 0) await fetchTasks();
-  } catch {
-    // ignore
+  } catch (err) {
+    showAddError((err as Error).message);
   } finally {
     btn.disabled = false;
     btn.textContent = 'Send now';
@@ -314,7 +324,11 @@ document.getElementById('task-list')!.addEventListener('dblclick', e => {
   const title = span.dataset['title'];
   if (!dest || !title) return;
   const url = synoAPI.fileOpenUrl(dest, title);
-  if (url) chrome.downloads.download({ url, filename: title });
+  if (url) {
+    chrome.downloads.download({ url, filename: title }, () => {
+      if (chrome.runtime.lastError) console.warn(chrome.runtime.lastError.message);
+    });
+  }
 });
 
 init();

@@ -12,6 +12,15 @@ export interface QueuedTask {
 
 const QUEUE_KEY = 'downloadQueue';
 
+// Serialize read-modify-write cycles so concurrent callers can't drop updates.
+let chain: Promise<unknown> = Promise.resolve();
+
+function serial<T>(fn: () => Promise<T>): Promise<T> {
+  const run = chain.then(fn, fn);
+  chain = run.catch(() => undefined);
+  return run;
+}
+
 export function loadQueue(): Promise<QueuedTask[]> {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get({ [QUEUE_KEY]: [] }, items => {
@@ -24,26 +33,32 @@ export function loadQueue(): Promise<QueuedTask[]> {
   });
 }
 
-export async function enqueueTask(uri: string, destination?: string): Promise<QueuedTask> {
-  const queue = await loadQueue();
-  const task: QueuedTask = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    uri,
-    destination,
-    addedAt: Date.now(),
-  };
-  queue.push(task);
-  await saveQueue(queue);
-  return task;
+export function enqueueTask(uri: string, destination?: string): Promise<QueuedTask> {
+  return serial(async () => {
+    const queue = await loadQueue();
+    const task: QueuedTask = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      uri,
+      destination,
+      addedAt: Date.now(),
+    };
+    queue.push(task);
+    await saveQueue(queue);
+    return task;
+  });
 }
 
-export async function dequeueTask(id: string): Promise<void> {
-  const queue = await loadQueue();
-  await saveQueue(queue.filter(t => t.id !== id));
+export function dequeueTask(id: string): Promise<void> {
+  return serial(async () => {
+    const queue = await loadQueue();
+    await saveQueue(queue.filter(t => t.id !== id));
+  });
 }
 
-export async function clearQueue(): Promise<void> {
-  await saveQueue([]);
+export function clearQueue(): Promise<void> {
+  return serial(async () => {
+    await saveQueue([]);
+  });
 }
 
 function saveQueue(queue: QueuedTask[]): Promise<void> {

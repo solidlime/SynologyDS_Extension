@@ -2,6 +2,7 @@
   "name": "synology-ds-extension",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "build": "npm run icons && node scripts/build.js",
     "build:watch": "node scripts/build.js --watch",
@@ -11,8 +12,8 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.0.260",
-    "esbuild": "^0.21.0",
-    "sharp": "^0.33.3",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.5",
     "typescript": "^5.4.0"
   }
 }

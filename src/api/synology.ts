@@ -81,14 +81,22 @@ export class SynologyAPIError extends Error {
   constructor(
     public readonly code: number,
     message: string,
+    /** API that produced the error — auth failures are not task rejections. */
+    public readonly api: string = '',
   ) {
     super(message);
     this.name = 'SynologyAPIError';
+  }
+
+  /** True when DownloadStation itself refused this task (permanent). */
+  get isTaskRejection(): boolean {
+    return this.api === 'SYNO.DownloadStation.Task' && this.code >= 400 && this.code <= 408;
   }
 }
 
 export class SynologyAPI {
   private sid: string | null = null;
+  private settings: DSSettings | null = null;
   private baseUrl = '';
   private apiInfo: Record<string, ApiInfo> = {};
 
@@ -142,6 +150,7 @@ export class SynologyAPI {
   // ── Auth ────────────────────────────────────────────────────────────────────
 
   async login(settings: DSSettings): Promise<void> {
+    this.settings = settings;
     let url = settings.url.trim().replace(/\/$/, '');
 
     if (isQuickConnect(url)) {
@@ -244,9 +253,9 @@ export class SynologyAPI {
 
   // ── HTTP transport ──────────────────────────────────────────────────────────
 
-  private async _request(api: string, params: URLSearchParams, authenticated: boolean): Promise<Record<string, unknown>> {
+  private async _request(api: string, params: URLSearchParams, authenticated: boolean, retried = false): Promise<Record<string, unknown>> {
     if (authenticated) {
-      if (!this.sid) throw new SynologyAPIError(0, 'Not authenticated — please check NAS settings.');
+      if (!this.sid) throw new SynologyAPIError(0, 'Not authenticated — please check NAS settings.', 'SYNO.API.Auth');
       params.set('_sid', this.sid);
     }
 
@@ -290,9 +299,16 @@ export class SynologyAPI {
       } else {
         message = TASK_ERRORS[code] ?? message;
       }
-      // Session expired — clear sid so next call triggers re-login
-      if (code === 105 || code === 106) this.sid = null;
-      throw new SynologyAPIError(code, message);
+      // Session expired — clear sid and retry once with a fresh login
+      if (code === 105 || code === 106 || code === 107 || code === 119) {
+        this.sid = null;
+        if (authenticated && !retried && this.settings) {
+          await this.login(this.settings);
+          params.set('_sid', this.sid!);
+          return this._request(api, params, authenticated, true);
+        }
+      }
+      throw new SynologyAPIError(code, message, params.get('api') ?? '');
     }
 
     return (data.data ?? {}) as Record<string, unknown>;
