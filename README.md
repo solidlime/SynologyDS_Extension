@@ -178,13 +178,25 @@ npm install
 npm run build        # アイコン生成 + TypeScript のビルド
 npm run build:watch  # ファイル変更で自動ビルド
 npm run typecheck    # 型チェックのみ（tsc --noEmit）
+npm test             # テスト（node --test）
 npm run icons        # icons/icon.svg から PNG を再生成
 npm run clean        # dist/ を削除
 ```
 
 ビルドは esbuild で、`src/` の TypeScript と HTML / CSS を `dist/` に束ねます。`dist/` は Git の管理外です。
 
-CI は `.github/workflows/build.yml` にあり、`main` への push と pull request で型チェックとビルドが走ります。`dist/` はアーティファクトとして残り、`v*` タグを切るとビルド済みの ZIP を添えた GitHub Release が作られます。
+`manifest.json` の `version` はプレースホルダで、ビルド時に `package.json` の値が書き込まれます。バージョンを上げるファイルは `package.json` だけです。
+
+### リリース
+
+`.github/workflows/build.yml` が、`main` に入った `package.json` のバージョンがまだリリースされていなければ、自動でタグを打ってビルド済み ZIP 付きの GitHub Release を作ります。
+
+```bash
+npm version patch   # バージョンを上げてコミットする（タグも手元にできる）
+git push
+```
+
+`npm version patch` はタグも打ちますが、そのタグは手元に残るだけで構いません。`main` への push だけでリリースが出ます（`git push --follow-tags` でタグも送ると、先にタグ起点でリリースされます）。同じバージョンの Release が既にある場合、CI は何もせず終わります。
 
 ### ディレクトリ構成
 

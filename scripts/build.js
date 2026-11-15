@@ -13,7 +13,6 @@ const outDir = 'dist';
 // Copy static assets
 function copyStatic() {
   const copies = [
-    ['manifest.json',             'dist/manifest.json'],
     ['src/popup/popup.html',      'dist/popup/popup.html'],
     ['src/popup/popup.css',       'dist/popup/popup.css'],
     ['src/options/options.html',  'dist/options/options.html'],
@@ -32,6 +31,15 @@ function copyStatic() {
   console.log('Static assets copied.');
 }
 
+// manifest.json carries a placeholder version: package.json is the only source of
+// truth, so a release bumps one file and the tag can never disagree with the zip.
+function writeManifest() {
+  const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+  manifest.version = require('../package.json').version;
+  fs.writeFileSync('dist/manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+  console.log(`manifest.json written with version ${manifest.version}.`);
+}
+
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
   entryPoints: [
@@ -48,6 +56,7 @@ const buildOptions = {
 };
 
 copyStatic();
+writeManifest();
 
 if (isWatch) {
   esbuild.context(buildOptions).then(ctx => {
