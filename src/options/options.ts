@@ -39,7 +39,7 @@ testBtn.addEventListener('click', async () => {
   testBtn.disabled = true;
   testBtn.textContent = 'Testing…';
   setStatus('Connecting…', 'info');
-  const api = new SynologyAPI();
+  const api = new SynologyAPI('DSManagerProbe');
   try {
     await api.login({
       url:      nasUrlInput.value.trim(),

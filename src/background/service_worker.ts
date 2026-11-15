@@ -1,6 +1,9 @@
-import { synoAPI, SynologyAPIError } from '../api/synology.js';
+import { SynologyAPI, SynologyAPIError } from '../api/synology.js';
 import { loadSettings } from '../storage/settings.js';
 import { enqueueTask, loadQueue, dequeueTask } from '../storage/queue.js';
+
+// Own session name so the popup's long-lived login isn't evicted by the worker.
+const synoAPI = new SynologyAPI('DSManagerWorker');
 
 const MENU_LINK      = 'ds-send-link';
 const MENU_PAGE      = 'ds-send-page';
@@ -44,6 +47,8 @@ async function trySend(url: string, destination?: string): Promise<boolean> {
   const settings = await loadSettings();
   if (!settings.nasUrl || !settings.username || !settings.password) return false;
 
+  // TODO(drive-by): a settings change while the worker stays alive keeps the old
+  // sid, so tasks go to the previous NAS. Clear the session on settings change.
   if (!synoAPI.isLoggedIn) {
     await synoAPI.login({ url: settings.nasUrl, username: settings.username, password: settings.password });
   }
@@ -55,7 +60,7 @@ async function trySend(url: string, destination?: string): Promise<boolean> {
  * Flush all queued tasks to DownloadStation.
  * Only one flush runs at a time — startup and "Send now" can overlap.
  */
-export function flushQueue(): Promise<{ sent: number; failed: number }> {
+function flushQueue(): Promise<{ sent: number; failed: number }> {
   return (flushing ??= runFlush().finally(() => { flushing = null; }));
 }
 

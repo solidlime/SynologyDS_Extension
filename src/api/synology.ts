@@ -5,12 +5,7 @@
  */
 
 import { isQuickConnect, resolveQuickConnect } from './quickconnect.js';
-
-interface ApiInfo {
-  path: string;
-  maxVersion: number;
-  minVersion: number;
-}
+import { pathFor, TASK_API, type ApiInfo } from './paths.js';
 
 export interface DSSettings {
   url: string;
@@ -90,7 +85,7 @@ export class SynologyAPIError extends Error {
 
   /** True when DownloadStation itself refused this task (permanent). */
   get isTaskRejection(): boolean {
-    return this.api === 'SYNO.DownloadStation.Task' && this.code >= 400 && this.code <= 408;
+    return this.api === TASK_API && this.code >= 400 && this.code <= 408;
   }
 }
 
@@ -99,6 +94,14 @@ export class SynologyAPI {
   private settings: DSSettings | null = null;
   private baseUrl = '';
   private apiInfo: Record<string, ApiInfo> = {};
+  private loginInFlight: Promise<void> | null = null;
+
+  /**
+   * @param sessionName - DSM invalidates an existing sid when the same session
+   * name logs in again, so each extension context needs its own. Do not share it
+   * between the popup, the service worker and the options page.
+   */
+  constructor(private readonly sessionName = 'DSManager') {}
 
   get isLoggedIn(): boolean {
     return this.sid !== null;
@@ -113,28 +116,41 @@ export class SynologyAPI {
 
   /**
    * Query SYNO.API.Info to discover correct paths and versions for all needed
-   * APIs. Falls back silently — callers then use entry.cgi as default.
+   * APIs. On failure the DEFAULT_PATHS / entry.cgi fallbacks in _path() apply.
    */
   private async _discoverApis(): Promise<void> {
+    // A previous login's discovery may belong to a different NAS URL.
+    this.apiInfo = {};
+
     const queryUrl =
       `${this.baseUrl}/webapi/query.cgi` +
-      `?api=SYNO.API.Info&version=1&method=query` +
+      `?api=SYNO.API.Info&version=${this.limit()}&method=query` +
       `&query=SYNO.API.Auth,SYNO.DownloadStation.Task,SYNO.FileStation.Download`;
     try {
       const res = await fetch(queryUrl);
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.warn(`[synology] API discovery failed: HTTP ${res.status}`);
+        return;
+      }
       const body = (await res.json()) as { success: boolean; data?: Record<string, ApiInfo> };
       if (body.success && body.data) {
         this.apiInfo = body.data;
+      } else {
+        console.warn('[synology] API discovery returned success:false', body);
       }
-    } catch {
-      // Non-fatal: fall back to entry.cgi defaults
+    } catch (e) {
+      console.warn('[synology] API discovery failed:', e);
     }
+  }
+
+  /** Cache-buster only; the value is irrelevant as long as it changes per build. */
+  private limit(): number {
+    return parseInt(chrome.runtime.getManifest().version, 10) || 1;
   }
 
   /** Return the webapi sub-path for an API, defaulting to entry.cgi. */
   private _path(api: string): string {
-    return this.apiInfo[api]?.path ?? 'entry.cgi';
+    return pathFor(this.apiInfo, api);
   }
 
   /**
@@ -150,6 +166,15 @@ export class SynologyAPI {
   // ── Auth ────────────────────────────────────────────────────────────────────
 
   async login(settings: DSSettings): Promise<void> {
+    // Concurrent 105 retries (popup poll + user action) would log in twice and
+    // each new sid invalidates the other, so they share one login.
+    // Known limitation: a caller holding different settings reuses the in-flight
+    // session (and its baseUrl) instead of logging in again. No caller does that today.
+    this.loginInFlight ??= this._login(settings).finally(() => { this.loginInFlight = null; });
+    return this.loginInFlight;
+  }
+
+  private async _login(settings: DSSettings): Promise<void> {
     this.settings = settings;
     let url = settings.url.trim().replace(/\/$/, '');
 
@@ -170,7 +195,7 @@ export class SynologyAPI {
       method: 'login',
       account: settings.username,
       passwd: settings.password,
-      session: 'FileStation',
+      session: this.sessionName,
       format: 'sid',
     });
     const data = await this._request('SYNO.API.Auth', params, false);
@@ -186,10 +211,16 @@ export class SynologyAPI {
           api: 'SYNO.API.Auth',
           version: this._version('SYNO.API.Auth', 7),
           method: 'logout',
-          session: 'FileStation',
+          session: this.sessionName,
         }),
+        // retried=true: never re-login from logout — that would leave an orphan session
+        true,
         true,
       );
+    } catch (e) {
+      // Best effort: the local sid is dropped either way, and a failed logout
+      // must not be reported as a failed connection.
+      console.warn('[synology] logout failed:', e);
     } finally {
       this.sid = null;
     }
@@ -243,7 +274,7 @@ export class SynologyAPI {
   }
 
   private async _task(params: Record<string, string>): Promise<unknown> {
-    const api = 'SYNO.DownloadStation.Task';
+    const api = TASK_API;
     return this._request(
       api,
       new URLSearchParams({ api, version: this._version(api, 3), ...params }),
@@ -254,9 +285,10 @@ export class SynologyAPI {
   // ── HTTP transport ──────────────────────────────────────────────────────────
 
   private async _request(api: string, params: URLSearchParams, authenticated: boolean, retried = false): Promise<Record<string, unknown>> {
+    const usedSid = this.sid;
     if (authenticated) {
-      if (!this.sid) throw new SynologyAPIError(0, 'Not authenticated — please check NAS settings.', 'SYNO.API.Auth');
-      params.set('_sid', this.sid);
+      if (!usedSid) throw new SynologyAPIError(0, 'Not authenticated — please check NAS settings.', 'SYNO.API.Auth');
+      params.set('_sid', usedSid);
     }
 
     const endpoint = `${this.baseUrl}/webapi/${this._path(api)}`;
@@ -293,18 +325,23 @@ export class SynologyAPI {
     if (!data.success) {
       const code = data.error?.code ?? -1;
       const apiName = params.get('api') ?? '';
-      let message = `API error (code ${code})`;
-      if (apiName.includes('Auth')) {
-        message = AUTH_ERRORS[code] ?? message;
-      } else {
-        message = TASK_ERRORS[code] ?? message;
-      }
-      // Session expired — clear sid and retry once with a fresh login
+      // Unknown codes: expose which API/path was called so 102-style path bugs are visible
+      const known = apiName === 'SYNO.API.Auth' ? AUTH_ERRORS[code]
+        : apiName === TASK_API ? TASK_ERRORS[code]
+        : undefined;
+      const message = known ?? `API error (code ${code}) — ${apiName} via ${this._path(apiName)}`;
+      // Session expired — retry once with a fresh login
       if (code === 105 || code === 106 || code === 107 || code === 119) {
-        this.sid = null;
+        // Only drop the sid this request was sent with. A late response for an old
+        // sid must not invalidate the one a concurrent retry just obtained.
+        if (this.sid === usedSid) this.sid = null;
         if (authenticated && !retried && this.settings) {
-          await this.login(this.settings);
-          params.set('_sid', this.sid!);
+          // Someone else may have refreshed already — re-login only if we have none,
+          // otherwise a second login would kill the sid they are using.
+          if (!this.sid) await this.login(this.settings);
+          const sid = this.sid;
+          if (!sid) throw new SynologyAPIError(0, 'Not authenticated — please check NAS settings.', 'SYNO.API.Auth');
+          params.set('_sid', sid);
           return this._request(api, params, authenticated, true);
         }
       }
@@ -314,5 +351,3 @@ export class SynologyAPI {
     return (data.data ?? {}) as Record<string, unknown>;
   }
 }
-
-export const synoAPI = new SynologyAPI();

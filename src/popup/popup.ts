@@ -1,6 +1,10 @@
-import { synoAPI, DSTask, TaskStatus } from '../api/synology.js';
+import { SynologyAPI, SynologyAPIError, DSTask, TaskStatus } from '../api/synology.js';
 import { loadSettings, isConfigured } from '../storage/settings.js';
 import { loadQueue } from '../storage/queue.js';
+
+// Own session name: DSM kills the previous sid when the same name logs in again,
+// so the popup, the service worker and the options page must not share one.
+const synoAPI = new SynologyAPI('DSManagerPopup');
 
 type Tab = 'active' | 'finished' | 'error';
 
@@ -200,18 +204,32 @@ async function addTaskFromInput(): Promise<void> {
 
   addTaskBtn.disabled = true;
   try {
-    const result: { success: boolean; queued?: boolean; error?: string } =
-      await chrome.runtime.sendMessage({ type: 'ADD_TASK', url });
-    if (result?.success) {
+    // Use the popup's own session — going through the service worker would open a
+    // second login and evict one of them.
+    const settings = await loadSettings();
+    try {
+      await synoAPI.createTask(url, settings.defaultDestination || undefined);
       addTaskInput.value = '';
-      if (result.queued) {
-        await updateQueueBanner();
-      } else {
-        await fetchTasks();
+      await fetchTasks();
+    } catch (err) {
+      // NAS refused the task permanently — report it, don't queue it.
+      if (err instanceof SynologyAPIError && err.isTaskRejection) {
+        showAddError(err.message);
+        return;
       }
-    } else {
-      // Rejected by the NAS, or no reply from the service worker
-      showAddError(result?.error ?? 'Failed to add task');
+      const result: { success: boolean; queued?: boolean; error?: string } =
+        await chrome.runtime.sendMessage({ type: 'ADD_TASK', url });
+      if (result?.success) {
+        addTaskInput.value = '';
+        if (result.queued) {
+          await updateQueueBanner();
+        } else {
+          await fetchTasks();
+        }
+      } else {
+        // Rejected by the NAS, or no reply from the service worker
+        showAddError(result?.error ?? 'Failed to add task');
+      }
     }
   } catch (err) {
     showAddError((err as Error).message);
