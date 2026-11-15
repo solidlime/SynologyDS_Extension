@@ -53,9 +53,15 @@ async function trySend(url: string, destination?: string): Promise<boolean> {
 
 /**
  * Flush all queued tasks to DownloadStation.
- * Returns { sent, failed } counts.
+ * Only one flush runs at a time — startup and "Send now" can overlap.
  */
-export async function flushQueue(): Promise<{ sent: number; failed: number }> {
+export function flushQueue(): Promise<{ sent: number; failed: number }> {
+  return (flushing ??= runFlush().finally(() => { flushing = null; }));
+}
+
+let flushing: Promise<{ sent: number; failed: number }> | null = null;
+
+async function runFlush(): Promise<{ sent: number; failed: number }> {
   const queue = await loadQueue();
   if (queue.length === 0) return { sent: 0, failed: 0 };
 
@@ -71,8 +77,9 @@ export async function flushQueue(): Promise<{ sent: number; failed: number }> {
       await dequeueTask(task.id);
       sent++;
     } catch (err) {
-      if (err instanceof SynologyAPIError) {
-        // NAS answered and refused — drop the task so the rest can proceed
+      if (err instanceof SynologyAPIError && err.isTaskRejection) {
+        // DownloadStation refused this task — drop it so the rest can proceed.
+        // Auth/session errors fall through: the task may still be valid later.
         await dequeueTask(task.id);
         failed++;
         rejected++;
@@ -80,7 +87,7 @@ export async function flushQueue(): Promise<{ sent: number; failed: number }> {
         continue;
       }
       failed++;
-      // Stop processing on first failure — NAS likely still unreachable
+      // Stop processing on first failure — NAS unreachable or not authenticated
       break;
     }
   }
@@ -150,20 +157,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     await trySend(url, settings.defaultDestination || undefined);
     notify('Task added', clip(url, 80));
   } catch (err) {
-    // Re-authenticate once on session expiry, then retry
-    if (!synoAPI.isLoggedIn) {
-      try {
-        const s = await loadSettings();
-        await synoAPI.login({ url: s.nasUrl, username: s.username, password: s.password });
-        await synoAPI.createTask(url, s.defaultDestination || undefined);
-        notify('Task added', clip(url, 80));
-        return;
-      } catch {
-        // fall through to queue
-      }
-    }
-
-    if (err instanceof SynologyAPIError) {
+    if (err instanceof SynologyAPIError && err.isTaskRejection) {
       // Permanent rejection — the queue would only repeat it
       notify('Error', err.message);
       return;
